@@ -784,7 +784,7 @@ def dict_to_yaml(data, width=None, sort=False):
     return output.getvalue()
 
 
-def yaml_to_dict(data, check_version=False):
+def yaml_to_dict(data, check_version=False, yaml_type=None):
     """
     Convert yaml into dictionary
 
@@ -793,7 +793,7 @@ def yaml_to_dict(data, check_version=False):
     for smooth deprecation of YAML 1.1.
     """
     # FIXME: Deprecate the 1.1 loading in 2.0
-    old_yaml = YAML()
+    old_yaml = YAML(typ=yaml_type)
     old_yaml.version = (1, 1)
     old_result = old_yaml.load(data)
     if check_version:

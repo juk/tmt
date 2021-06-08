@@ -561,7 +561,13 @@ class Plan(Core):
             # For each option check for valid yaml and store
             for option in options:
                 try:
-                    data = tmt.utils.yaml_to_dict(option)
+                    # FIXME: Ruamel.yaml "remembers" the used formatting when
+                    #        using round-trip mode and since it comes from the
+                    #        command-line, no formatting is applied resulting
+                    #        in inconsistent formatting. Using a safe loader in
+                    #        this case is a hack to make it forget, though there
+                    #        may be a better way to do this.
+                    data = tmt.utils.yaml_to_dict(option, yaml_type='safe')
                     if not data:
                         raise tmt.utils.GeneralError(
                             f"Invalid step data for {step}: '{data}'.")
