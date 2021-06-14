@@ -1,11 +1,15 @@
 import os
+import re
 import sys
+import textwrap
 import time
 
 import click
 
 import tmt
 from tmt.steps.execute import TEST_OUTPUT_FILENAME
+from tmt.steps.provision import Guest
+from tmt.steps.provision.local import GuestLocal
 
 
 class ExecuteInternal(tmt.steps.execute.ExecutePlugin):
@@ -24,6 +28,16 @@ class ExecuteInternal(tmt.steps.execute.ExecutePlugin):
         tmt.steps.Method(name='shell.tmt', doc=__doc__, order=80),
         tmt.steps.Method(name='beakerlib.tmt', doc=__doc__, order=80),
         ]
+
+    REBOOT_VARIABLE = 'REBOOT_COUNT'
+    REBOOT_SCRIPT_PATHS = ("/usr/bin/rstrnt-reboot", "/usr/bin/rhts-reboot")
+    REBOOT_SCRIPT = textwrap.dedent(f"""\
+    #!/bin/sh
+    if [ -z "${REBOOT_VARIABLE}" ]; then
+        export {REBOOT_VARIABLE}=0
+    fi
+    echo "Requesting reboot: ${REBOOT_VARIABLE}"
+    """)
 
     @classmethod
     def options(cls, how=None):
@@ -150,6 +164,40 @@ class ExecuteInternal(tmt.steps.execute.ExecutePlugin):
         else:
             return self.check_shell(test)
 
+    def _setup_reboot(self, guest):
+        """ Prepare the guest environment for potential reboot """
+        # We only want to change the environment in tmt-provisioned machines,
+        # ignore Local and Connect
+        if isinstance(guest, GuestLocal) or guest.__class__ is Guest:
+            return
+        for reboot_file in self.REBOOT_SCRIPT_PATHS:
+            self.debug(f"Replacing {reboot_file} with tmt implementation")
+            guest.execute(f"echo '{self.REBOOT_SCRIPT}' > {reboot_file}")
+            guest.execute(f"chmod +x {reboot_file}")
+
+    def _handle_reboot(self, test, guest):
+        """
+        Reboot the guest if the test requested it.
+
+        Check the previously fetched test log for signs of reboot request
+        and orchestrate the reboot if it was requested. Also increment
+        REBOOT_COUNT variable, reset it to 0 if no reboot was requested
+        (going forward to the next test). Return whether reboot was done.
+        """
+        output = self.read(
+            self.data_path(test, TEST_OUTPUT_FILENAME, full=True))
+        match = re.search(r"Requesting reboot: (?P<count>\d+)", output)
+        if match:
+            current_count = int(match.group("count"))
+            self.debug(f"Rebooting during test {test}, "
+                       f"reboot count: {current_count}")
+            guest.reboot()
+            test.environment[self.REBOOT_VARIABLE] = str(current_count + 1)
+            return True
+        else:
+            test.environment[self.REBOOT_VARIABLE] = "0"
+            return False
+
     def go(self):
         """ Execute available tests """
         super().go()
@@ -163,18 +211,20 @@ class ExecuteInternal(tmt.steps.execute.ExecutePlugin):
         # For each guest execute all tests
         tests = self.prepare_tests()
         for guest in self.step.plan.provision.guests():
-
+            self._setup_reboot(guest)
             # Push workdir to guest and execute tests
             guest.push()
-            for index, test in enumerate(tests):
+            index = 0
+            while index < len(tests):
+                test = tests[index]
                 self.execute(test, guest, progress=f"{index + 1}/{len(tests)}")
+                guest.pull(source=self.data_path(test, full=True))
+                if self._handle_reboot(test, guest):
+                    continue
+                self._results.append(self.check(test))
+                index += 1
             # Overwrite the progress bar, the test data is irrelevant
             self._show_progress('', '', True)
-
-            # Pull logs from guest and check results
-            guest.pull()
-            for test in tests:
-                self._results.append(self.check(test))
 
     def results(self):
         """ Return test results """
