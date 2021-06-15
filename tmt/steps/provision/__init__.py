@@ -239,6 +239,9 @@ class Guest(tmt.utils.Common):
         else:
             return command + self._ssh_options()
 
+    def reboot(self):
+        self.debug('Doing nothing to reboot the machine')
+
     def load(self, data):
         """
         Load guest data into object attributes for easy access
