@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -29,14 +30,19 @@ class ExecuteInternal(tmt.steps.execute.ExecutePlugin):
         tmt.steps.Method(name='beakerlib.tmt', doc=__doc__, order=80),
         ]
 
-    REBOOT_VARIABLE = 'REBOOT_COUNT'
+    REBOOT_VARIABLE = "REBOOT_COUNT"
+    REBOOT_TYPE = "reboot"
     REBOOT_SCRIPT_PATHS = ("/usr/bin/rstrnt-reboot", "/usr/bin/rhts-reboot")
     REBOOT_SCRIPT = textwrap.dedent(f"""\
     #!/bin/sh
     if [ -z "${REBOOT_VARIABLE}" ]; then
         export {REBOOT_VARIABLE}=0
     fi
-    echo "Requesting reboot: ${REBOOT_VARIABLE}"
+    echo "{{token}}:{{{{\
+        \\"type\\": \\"{REBOOT_TYPE}\\",\
+        \\"version\\": \\"0.1\\",\
+        \\"{REBOOT_VARIABLE}\\": ${REBOOT_VARIABLE}\
+    }}}}"
     """)
 
     @classmethod
@@ -170,9 +176,10 @@ class ExecuteInternal(tmt.steps.execute.ExecutePlugin):
         # ignore Local and Connect
         if isinstance(guest, GuestLocal) or guest.__class__ is Guest:
             return
+        script = self.REBOOT_SCRIPT.format(token=self.parent.reboot_token)
         for reboot_file in self.REBOOT_SCRIPT_PATHS:
             self.debug(f"Replacing {reboot_file} with tmt implementation")
-            guest.execute(f"echo '{self.REBOOT_SCRIPT}' > {reboot_file}")
+            guest.execute(f"echo '{script}' > {reboot_file}")
             guest.execute(f"chmod +x {reboot_file}")
 
     def _handle_reboot(self, test, guest):
@@ -186,17 +193,19 @@ class ExecuteInternal(tmt.steps.execute.ExecutePlugin):
         """
         output = self.read(
             self.data_path(test, TEST_OUTPUT_FILENAME, full=True))
-        match = re.search(r"Requesting reboot: (?P<count>\d+)", output)
+        token = self.parent.reboot_token
+        match = re.search(r"{}:(?P<data>.+)".format(re.escape(token)), output)
         if match:
-            current_count = int(match.group("count"))
-            self.debug(f"Rebooting during test {test}, "
-                       f"reboot count: {current_count}")
-            guest.reboot()
-            test.environment[self.REBOOT_VARIABLE] = str(current_count + 1)
-            return True
-        else:
-            test.environment[self.REBOOT_VARIABLE] = "0"
-            return False
+            data = json.loads(match.group("data"))
+            if data.get("type") == self.REBOOT_TYPE:
+                current_count = data.get(self.REBOOT_VARIABLE, 0)
+                self.debug(f"Rebooting during test {test}, "
+                           f"reboot count: {current_count}")
+                guest.reboot()
+                test.environment[self.REBOOT_VARIABLE] = str(current_count + 1)
+                return True
+        test.environment[self.REBOOT_VARIABLE] = "0"
+        return False
 
     def go(self):
         """ Execute available tests """

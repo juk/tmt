@@ -1,5 +1,7 @@
 import os
 import re
+import secrets
+import string
 import time
 
 import click
@@ -33,11 +35,17 @@ class Execute(tmt.steps.Step):
     # Internal executor is the default implementation
     how = 'tmt'
 
+    REBOOT_TOKEN_LEN = 32
+
     def __init__(self, data, plan):
         """ Initialize execute step data """
         super().__init__(data, plan)
         # List of Result() objects representing test results
         self._results = []
+
+        token_alphabet = string.ascii_letters + string.digits
+        self.reboot_token = ''.join(secrets.choice(token_alphabet)
+                                    for _ in range(self.REBOOT_TOKEN_LEN))
 
         # Default test framework and mapping old methods
         # FIXME remove when we drop the old execution methods
@@ -58,7 +66,7 @@ class Execute(tmt.steps.Step):
 
     def save(self):
         """ Save test results to the workdir """
-        super().save()
+        super().save(reboot_token=self.reboot_token)
         results = dict([
             (result.name, result.export()) for result in self.results()])
         self.write('results.yaml', tmt.utils.dict_to_yaml(results))

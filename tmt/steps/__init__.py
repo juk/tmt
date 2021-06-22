@@ -103,14 +103,17 @@ class Step(tmt.utils.Common):
         try:
             content = tmt.utils.yaml_to_dict(self.read('step.yaml'))
             self.debug('Successfully loaded step data.', level=2)
-            self.data = content['data']
+            for key, value in content.items():
+                if key != 'status':
+                    setattr(self, key, value)
             self.status(content['status'])
         except GeneralError:
             self.debug('Step data not found.', level=2)
 
-    def save(self):
+    def save(self, **kwargs):
         """ Save status and step data to the workdir """
         content = dict(status=self.status(), data=self.data)
+        content.update(kwargs)
         self.write('step.yaml', tmt.utils.dict_to_yaml(content))
 
     def wake(self):
