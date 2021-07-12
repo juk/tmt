@@ -2,19 +2,19 @@ title: Reboot during test
 story:
     As a tester I need to reboot the guest during a test and then
     resume the test execution.
-description:
+description: |
     Some tests may require a reboot as a part of them, e.g.
     upgrading the system, rebooting and then running some checks.
 
     The functionality is compatible with how restraint
-    works, hence ``rhts-reboot`` or ``rstrnt-reboot`` can be used
-    to start the reboot. The ``REBOOT_COUNT`` environment
+    works, hence ``rhts-reboot``, ``rstrnt-reboot`` or ``tmt-reboot``
+    can be used to start the reboot. The ``REBOOT_COUNT`` environment
     variable is used to pass the test information about the number
     of reboots done.
 
     Note that this only works with the internal tmt executor and
     works with guests provisioned by tmt (e.g. container or
-    virtual) and doesn't work with local or connect provision.
+    virtual) and doesn't work with the local provision.
 
 example: |
     if [ -z "$REBOOT_COUNT" ] || [ $REBOOT_COUNT -eq 0 ]; then
@@ -25,3 +25,4 @@ example: |
     fi
 link:
     - implemented-by: /tmt/steps/execute/internal.py
+    - verified-by: /tests/execute/reboot

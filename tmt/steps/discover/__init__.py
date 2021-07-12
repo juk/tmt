@@ -24,9 +24,10 @@ class Discover(tmt.steps.Step):
         except tmt.utils.FileError:
             self.debug('Discovered tests not found.', level=2)
 
-    def save(self):
+    def save(self, data=None):
         """ Save step data to the workdir """
-        super(Discover, self).save()
+        data = data or {}
+        super(Discover, self).save(data)
 
         # Create tests.yaml with the full test data
         tests = dict([

@@ -110,10 +110,11 @@ class Step(tmt.utils.Common):
         except GeneralError:
             self.debug('Step data not found.', level=2)
 
-    def save(self, **kwargs):
+    def save(self, data=None):
         """ Save status and step data to the workdir """
+        data = data or {}
         content = dict(status=self.status(), data=self.data)
-        content.update(kwargs)
+        content.update(data)
         self.write('step.yaml', tmt.utils.dict_to_yaml(content))
 
     def wake(self):

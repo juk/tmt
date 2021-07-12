@@ -31,9 +31,10 @@ class Provision(tmt.steps.Step):
         except tmt.utils.FileError:
             self.debug('Provisioned guests not found.', level=2)
 
-    def save(self):
+    def save(self, data=None):
         """ Save guest data to the workdir """
-        super().save()
+        data = data or {}
+        super().save(data)
         try:
             guests = dict(
                 [(guest.name, guest.save()) for guest in self.guests()])

@@ -18,6 +18,9 @@ DEFAULT_FRAMEWORK = 'shell'
 # The main test output filename
 TEST_OUTPUT_FILENAME = 'output.txt'
 
+# Length of the token used for identifying reboot request
+REBOOT_TOKEN_LEN = 32
+
 
 class Execute(tmt.steps.Step):
     """
@@ -35,8 +38,6 @@ class Execute(tmt.steps.Step):
     # Internal executor is the default implementation
     how = 'tmt'
 
-    REBOOT_TOKEN_LEN = 32
-
     def __init__(self, data, plan):
         """ Initialize execute step data """
         super().__init__(data, plan)
@@ -45,7 +46,7 @@ class Execute(tmt.steps.Step):
 
         token_alphabet = string.ascii_letters + string.digits
         self.reboot_token = ''.join(secrets.choice(token_alphabet)
-                                    for _ in range(self.REBOOT_TOKEN_LEN))
+                                    for _ in range(REBOOT_TOKEN_LEN))
 
         # Default test framework and mapping old methods
         # FIXME remove when we drop the old execution methods
@@ -64,9 +65,11 @@ class Execute(tmt.steps.Step):
         except tmt.utils.FileError as error:
             self.debug('Test results not found.', level=2)
 
-    def save(self):
+    def save(self, data=None):
         """ Save test results to the workdir """
-        super().save(reboot_token=self.reboot_token)
+        data = data or {}
+        data.update({'reboot_token': self.reboot_token})
+        super().save(data)
         results = dict([
             (result.name, result.export()) for result in self.results()])
         self.write('results.yaml', tmt.utils.dict_to_yaml(results))
