@@ -35,8 +35,9 @@ TESTCLOUD_IMAGES = os.path.join(TESTCLOUD_DATA, 'images')
 
 # Userdata for cloud-init
 USER_DATA = """#cloud-config
-password: %s
 chpasswd:
+  list: |
+    {user_name}:%s
   expire: false
 users:
   - default
@@ -127,6 +128,9 @@ DEFAULT_CONNECT_TIMEOUT = 60   # seconds
 
 # Image guessing related variables
 KOJI_URL = 'https://kojipkgs.fedoraproject.org/compose'
+
+# SSH key type, set None for ssh-keygen default one
+SSH_KEYGEN_TYPE = "ecdsa"
 
 
 class ProvisionTestcloud(tmt.steps.provision.ProvisionPlugin):
@@ -364,15 +368,19 @@ class GuestTestcloud(tmt.Guest):
             self.instance_name, image=self.image,
             connection='qemu:///session')
 
-    def prepare_ssh_key(self):
+    def prepare_ssh_key(self, key_type=None):
         """ Prepare ssh key for authentication """
         # Create ssh key paths
-        self.key = os.path.join(self.workdir, 'id_rsa')
-        self.pubkey = os.path.join(self.workdir, 'id_rsa.pub')
+        key_name = "id_{}".format(key_type if key_type is not None else 'rsa')
+        self.key = os.path.join(self.workdir, key_name)
+        self.pubkey = os.path.join(self.workdir, f'{key_name}.pub')
 
         # Generate ssh key
         self.debug('Generating an ssh key.')
-        self.run(["ssh-keygen", "-f", self.key, "-N", ""], shell=False)
+        command = ["ssh-keygen", "-f", self.key, "-N", ""]
+        if key_type is not None:
+            command.extend(["-t", key_type])
+        self.run(command, shell=False)
         with open(self.pubkey, 'r') as pubkey:
             self.config.USER_DATA = USER_DATA.format(
                 user_name=self.user, public_key=pubkey.read())
@@ -437,7 +445,7 @@ class GuestTestcloud(tmt.Guest):
         self.verbose('name', self.instance_name, 'green')
 
         # Prepare ssh key
-        self.prepare_ssh_key()
+        self.prepare_ssh_key(SSH_KEYGEN_TYPE)
 
         # Boot the virtual machine
         self.info('progress', 'booting...', 'cyan')
