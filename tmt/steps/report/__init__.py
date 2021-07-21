@@ -70,6 +70,14 @@ class ReportPlugin(tmt.steps.Plugin):
     # List of all supported methods aggregated from all plugins
     _supported_methods = []
 
+    # Ignore unknown options to produce more user-friendly messages when
+    # unsupported report plugins are used along with their options. For example
+    #       tmt run report -h html -o
+    # would produce an obscure error (Unknown option -o for report) if
+    # tmt-report-html wasn't installed. Consume these extra options and
+    # process them manually based on --how.
+    accept_all_options = True
+
     @classmethod
     def base_command(cls, method_class=None, usage=None):
         """ Create base click command (common for all report plugins) """
@@ -84,8 +92,14 @@ class ReportPlugin(tmt.steps.Plugin):
         @click.option(
             '-h', '--how', metavar='METHOD',
             help='Use specified method for results reporting.')
-        def report(context, **kwargs):
+        def report(context, how, **kwargs):
             context.obj.steps.add('report')
             Report._save_context(context)
+            # If how is unsupported and there are unknown options, it is OK and
+            # will be handled by delegate(). If how is OK and there are unknown
+            # options, throw an error.
+            methods = [method.name for method in cls.methods()]
+            if (not how or how in methods) and context.command.extra_args:
+                raise click.NoSuchOption(context.command.extra_args[0])
 
         return report

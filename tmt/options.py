@@ -29,14 +29,27 @@ force_dry = [
         help='Run in dry mode. No changes, please.'),
     ]
 
+# How option names
+HOW = ['-h', '--how']
 
-def create_method_class(methods):
+
+def is_long_opt(option):
+    """ Check if an option is long """
+    prefix, _ = click.parser.split_opt(option)
+    return len(prefix) > 1
+
+
+def create_method_class(methods, accept_all=False):
     """
     Create special class to handle different options for each method
 
     Accepts dictionary with method names and corresponding commands:
     For example: {'fmf', <click.core.Command object at 0x7f3fe04fded0>}
     Methods should be already sorted according to their priority.
+
+    If accept_all is set to True, the command parser will consume all
+    options and won't throw an error on undefined options. These options
+    will be stored in extra_args attribute to be processed later.
     """
 
     class MethodCommand(click.Command):
@@ -48,7 +61,7 @@ def create_method_class(methods):
 
             for index in range(len(args)):
                 # Handle '--how method' or '-h method'
-                if args[index] in ['--how', '-h']:
+                if args[index] in HOW:
                     try:
                         how = args[index + 1]
                     except IndexError:
@@ -86,4 +99,71 @@ def create_method_class(methods):
                 return self._method.invoke(context)
             return super().invoke(context)
 
-    return MethodCommand
+    class AcceptAllMethodCommand(MethodCommand):
+        def __init__(self, **kwargs):
+            super(AcceptAllMethodCommand, self).__init__(**kwargs)
+            self.extra_args = []
+
+        def make_parser(self, ctx):
+            """
+            Modify how the parser is created
+
+            Inspired by: https://stackoverflow.com/a/54077611 , made
+            more robust for short option handling and manual --how processing.
+            """
+            parser = super(MethodCommand, self).make_parser(ctx)
+            command = self
+            # Store the extra arguments for later checking
+            extra_args = self.extra_args
+
+            class AcceptAllDict(dict):
+                """
+                A dictionary that on member check adds an option if it
+                does not exist causing the parser to accept unknown options.
+                """
+                @staticmethod
+                def _split_opt(opt):
+                    prefix, value = click.parser.split_opt(opt)
+                    if len(prefix) == 1:
+                        # Short options, may be combined, e.g. run -vvdda
+                        return [prefix + short_opt for short_opt in value]
+                    else:
+                        # Long opt, return as it is
+                        return [opt]
+
+                def __contains__(self, opt):
+                    result = True
+                    for item in self._split_opt(opt):
+                        # Ignore --how, we process it manually
+                        if item not in HOW:
+                            # Trivially check dict to avoid infinite recursion
+                            in_short = super(
+                                AcceptAllDict,
+                                parser._short_opt).__contains__(item)
+                            in_long = super(
+                                AcceptAllDict,
+                                parser._long_opt).__contains__(item)
+                            if not in_short and not in_long:
+                                # We don't know the option, add it
+                                name = item.lstrip('-')
+                                click.option(item)(command)
+                                option = command.params[-1]
+                                parser.add_option(
+                                    option, [item], name.replace('-', '_'))
+                                # Save the option so that we know it was
+                                # specially added
+                                extra_args.append(item)
+                            # This will be used when matching long options,
+                            # return False for short options to avoid errors
+                            if not is_long_opt(item):
+                                result = False
+                        else:
+                            result = False
+                    return result
+
+            # Make use of the accepting dict for both short and long options
+            parser._short_opt = AcceptAllDict(parser._short_opt)
+            parser._long_opt = AcceptAllDict(parser._long_opt)
+            return parser
+
+    return AcceptAllMethodCommand if accept_all else MethodCommand

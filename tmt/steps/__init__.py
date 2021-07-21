@@ -231,6 +231,11 @@ class Plugin(tmt.utils.Common, metaclass=PluginIndex):
     # except for provision (virtual) and report (display)
     how = 'shell'
 
+    # Only the provision and report steps want to accept all options
+    # to be able to produce more user-friendly messages when dynamic
+    # plugins not yet installed are used.
+    accept_all_options = False
+
     def __init__(self, step, data):
         """ Store plugin name, data and parent step """
 
@@ -270,7 +275,8 @@ class Plugin(tmt.utils.Common, metaclass=PluginIndex):
             commands[method.name] = command
 
         # Create base command with common options using method class
-        method_class = tmt.options.create_method_class(commands)
+        method_class = tmt.options.create_method_class(
+            commands, cls.accept_all_options)
         command = cls.base_command(method_class, usage=method_overview)
         # Apply common options
         for option in cls.options():
